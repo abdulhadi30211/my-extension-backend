@@ -2,10 +2,10 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 
-app.use(cors()); // Allows your extension to talk to it
-app.use(express.json({ limit: '50mb' }));
+app.use(cors());
+app.use(express.json());
 
-// 1. Runtime Config (Fixes your "Failed to fetch" error)
+// 1. Runtime Config
 app.get('/api/v1/extension/v5', (req, res) => {
   res.json({
     enabled: true,
@@ -19,7 +19,7 @@ app.get('/api/v1/extension/v5', (req, res) => {
   });
 });
 
-// 2. License Validation (Accepts any key for testing)
+// 2. License Validation (Accepts any key for now)
 app.post('/api/v1/licenses/validate', (req, res) => {
   res.json({
     ok: true,
@@ -33,21 +33,42 @@ app.post('/api/v1/licenses/validate', (req, res) => {
   });
 });
 
-// 3. Chat (For testing, just logs the prompt)
-app.post('/api/v1/lovable/chat', (req, res) => {
-  console.log("Prompt received:", req.body.message);
-  res.json({ ok: true, status: 202, accepted: true });
+// 3. Chat (Forwarding to Lovable API)
+app.post('/api/v1/lovable/chat', async (req, res) => {
+  const { message, projectId, token } = req.body;
+  console.log("Prompt received:", message);
+  console.log("Project ID:", projectId);
+  console.log("Token present:", !!token);
+
+  if (!projectId || !token) {
+    return res.status(400).json({ ok: false, error: "Missing projectId or token" });
+  }
+
+  try {
+    const lovableResponse = await fetch(`https://api.lovable.dev/v1/projects/${projectId}/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ message }),
+    });
+
+    const data = await lovableResponse.json();
+    return res.json({ ok: true, ...data });
+
+  } catch (error) {
+    console.error("Error forwarding to Lovable:", error);
+    return res.status(500).json({ ok: false, error: error.message });
+  }
 });
 
-// 4. Download / Remove Watermark (Placeholders)
-app.post('/api/v1/lovable/source-code', (req, res) => {
-  res.json({ ok: true, files: [] });
-});
+// 4. Remove Watermark
 app.post('/api/v1/lovable/remove-watermark', (req, res) => {
   res.json({ ok: true });
 });
 
-// Start the server
+// Start the persistent server (Required for Render)
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
